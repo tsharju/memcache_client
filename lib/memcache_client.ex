@@ -4,7 +4,7 @@ defmodule Memcache.Client do
   alias Memcache.Client.Serialization
 
   defmodule Response do
-    defstruct body: "", extras: "", status: nil, cas: 0
+    defstruct value: "", extras: "", status: nil, cas: 0
   end
   
   def start(_type, _args) do
@@ -36,7 +36,7 @@ defmodule Memcache.Client do
     
     case reply do
       {:ok, header, _key, body, extras} ->
-        %Response{body: body, extras: extras, status: header.status, cas: header.cas}
+        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
       error ->
         error
     end
@@ -62,7 +62,7 @@ defmodule Memcache.Client do
     
     case reply do
       {:ok, header, _key, body, extras} ->
-        %Response{body: body, extras: extras, status: header.status, cas: header.cas}
+        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
       error ->
         error
     end
@@ -76,7 +76,7 @@ defmodule Memcache.Client do
     
     case reply do
       {:ok, header, _key, body, extras} ->
-        %Response{body: body, extras: extras, status: header.status, cas: header.cas}
+        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
       error ->
         error
     end
@@ -102,7 +102,7 @@ defmodule Memcache.Client do
         if header.status == :ok do
           <<body :: unsigned-integer-size(64)>> = body
         end
-        %Response{body: body, extras: extras, status: header.status, cas: header.cas}
+        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
       error ->
         error
     end
@@ -120,7 +120,7 @@ defmodule Memcache.Client do
 
     case reply do
       {:ok, header, _key, body, extras} ->
-        %Response{body: body, extras: extras, status: header.status, cas: header.cas}
+        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
       error ->
         error
     end
