@@ -125,5 +125,19 @@ defmodule Memcache.Client do
         error
     end
   end
+
+  def version() do
+    worker = :poolboy.checkout(Memcache.Client.Pool)
+    header = %Serialization.Header{opcode: Serialization.opcode :version}
+    reply = GenServer.call(worker, {:request, header, "", "", ""})
+    :poolboy.checkin(Memcache.Client.Pool, worker)
+
+    case reply do
+      {:ok, header, _key, body, extras} ->
+        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
+      error ->
+        error
+    end
+  end
   
 end
