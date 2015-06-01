@@ -108,4 +108,22 @@ defmodule Memcache.Client do
     end
   end
 
+  def flush(opts \\ []) do
+    expires = Keyword.get(opts, :expires, 0)
+
+    extras = <<expires :: size(32)>>
+
+    worker = :poolboy.checkout(Memcache.Client.Pool)
+    header = %Serialization.Header{opcode: Serialization.opcode :flush}
+    reply = GenServer.call(worker, {:request, header, "", "", extras})
+    :poolboy.checkin(Memcache.Client.Pool, worker)
+
+    case reply do
+      {:ok, header, _key, body, extras} ->
+        %Response{body: body, extras: extras, status: header.status, cas: header.cas}
+      error ->
+        error
+    end
+  end
+  
 end
