@@ -36,8 +36,12 @@ defmodule Memcache.Client do
     
     case reply do
       {:ok, header, _key, body, extras} ->
-        <<type_flag :: size(32)>> = extras
-        value = Memcache.Client.Transcoder.decode_value(body, type_flag)
+        if header.status == :ok do
+          <<type_flag :: size(32)>> = extras
+          value = Memcache.Client.Transcoder.decode_value(body, type_flag)
+        else
+          value = body
+        end
         %Response{value: value, extras: extras, status: header.status,
                   cas: header.cas, type_flag: type_flag}
       error ->
