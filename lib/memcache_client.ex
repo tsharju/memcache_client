@@ -4,7 +4,7 @@ defmodule Memcache.Client do
   alias Memcache.Client.Serialization
 
   defmodule Response do
-    defstruct value: "", extras: "", status: nil, cas: 0
+    defstruct value: "", extras: "", status: nil, cas: 0, type_flag: 0
   end
   
   def start(_type, _args) do
@@ -36,7 +36,10 @@ defmodule Memcache.Client do
     
     case reply do
       {:ok, header, _key, body, extras} ->
-        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
+        <<type_flag :: size(32)>> = extras
+        value = Memcache.Client.Transcoder.decode_value(body, type_flag)
+        %Response{value: value, extras: extras, status: header.status,
+                  cas: header.cas, type_flag: type_flag}
       error ->
         error
     end
@@ -49,10 +52,10 @@ defmodule Memcache.Client do
   def replace(key, value, opts \\ []), do: do_store(:replace, key, value, opts)
   
   defp do_store(opcode, key, value, opts) do
-    flags   = Keyword.get(opts, :flags, 0)
     expires = Keyword.get(opts, :expires, 0)
     cas     = Keyword.get(opts, :cas, 0)
-    
+
+    {value, flags} = Memcache.Client.Transcoder.encode_value(value)
     extras = <<flags :: size(32), expires :: size(32)>>
     
     worker = :poolboy.checkout(Memcache.Client.Pool)
