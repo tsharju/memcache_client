@@ -38,7 +38,13 @@ defmodule Memcache.Client do
       {:ok, header, _key, body, extras} ->
         if header.status == :ok do
           <<type_flag :: size(32)>> = extras
-          value = Memcache.Client.Transcoder.decode_value(body, type_flag)
+          case Memcache.Client.Transcoder.decode_value(body, type_flag) do
+            {:error, error} ->
+              header = %{header | status: :transcode_error}
+              value = "Transcode error"
+            value ->
+              value = value
+          end
         else
           value = body
         end
