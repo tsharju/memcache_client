@@ -17,7 +17,7 @@ defmodule Memcache.Client do
     worker_args = [host: "127.0.0.1",
                    port: 11211]
     
-    poolboy_sup = :poolboy.child_spec(Memcache.Client.Pool,
+    poolboy_sup = :poolboy.child_spec(Memcache.Client.Pool.Supervisor,
                                       pool_args, worker_args)
     
     children = [
