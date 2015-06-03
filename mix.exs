@@ -14,7 +14,7 @@ defmodule Memcache.Client.Mixfile do
   #
   # Type `mix help compile.app` for more information
   def application do
-    [applications: [:logger],
+    [applications: [:logger, :poolboy],
      mod: {Memcache.Client, []}]
   end
 
