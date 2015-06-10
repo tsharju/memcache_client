@@ -10,21 +10,42 @@ defmodule Memcache.Client.Worker do
     GenServer.start_link(__MODULE__, [args], [])
   end
   
-  def init(args) do
-    host = Keyword.get(args, :host, "127.0.0.1")
-    port = Keyword.get(args, :port, 11211)
+  def init([args]) do
+    host        = Keyword.get(args, :host, "127.0.0.1")
+    port        = Keyword.get(args, :port, 11211)
+    auth_method = Keyword.get(args, :auth_method, :none)
     
     socket_opts = [:binary, {:nodelay, true}, {:active, false}, {:packet, 0}]
     {:ok, socket} = :gen_tcp.connect(String.to_char_list(host), port, socket_opts)
-    
-    {:ok, %{socket: socket}}
+
+    case auth_method do
+      :sasl ->
+        username = Keyword.get(args, :username, "")
+        password = Keyword.get(args, :password, "")
+        
+        case sasl_authenticate(socket, username, password) do
+          :ok ->
+            {:ok, %{socket: socket}}
+          error ->
+            error
+        end
+      :none ->
+        {:ok, %{socket: socket}}
+    end
   end
   
   def handle_call({:request, header, key, body, extras}, _from, %{socket: socket} = state) do
     bytes = Serialization.encode_request(header, key, body, extras)
-    case :gen_tcp.send(socket, bytes) do
+    case send_and_receive(socket, bytes) do
       {:error, reason} ->
         {:stop, reason, {:error, reason}, state}
+      reply ->
+        {:reply, reply, state}
+    end
+  end
+  
+  defp send_and_receive(socket, bytes) do
+    case :gen_tcp.send(socket, bytes) do
       :ok ->
         case receive_header(socket) do
           {:ok, header} ->
@@ -35,13 +56,15 @@ defmodule Memcache.Client.Worker do
                 body_length = (header.total_body_length - (key_length + extras_length))
                 <<extras :: binary-size(extras_length), key :: binary-size(key_length),
                 body :: binary-size(body_length)>> = total_body
-                {:reply, {:ok, header, key, body, extras}, state}
+                {:ok, header, key, body, extras}
               {:error, reason} ->
-                {:stop, reason, {:error, reason}, state}
+                {:error, reason}
             end
           {:error, reason} ->
-            {:stop, reason, {:error, reason}, state}
+            {:error, reason}
         end
+      {:error, reason} ->
+        {:error, reason}
     end
   end
   
@@ -64,5 +87,41 @@ defmodule Memcache.Client.Worker do
         error
     end
   end
+
+  # SASL authentication
+
+  defp sasl_authenticate(socket, username, password) do
+    bytes = Serialization.encode_request(
+      %Serialization.Header{
+        opcode: Serialization.opcode(:sasl_list_mechanisms)}, "", "", "")
+    {:ok, header, _key, body, _extras} = send_and_receive(socket, bytes)
+
+    case header.status do
+      :ok ->
+        mechanisms = String.split(body, " ")
+        do_sasl_auth(mechanisms, username, password, socket)
+      reason ->
+        {:error, reason}
+    end
+  end
+
+  defp do_sasl_auth([mechanism | mechanisms], username, password, socket) do
+    do_sasl_auth(mechanism, username, password, socket)
+  end
+
+  defp do_sasl_auth("PLAIN", username, password, socket) do
+    bytes = Serialization.encode_request(
+      %Serialization.Header{
+        opcode: Serialization.opcode(:sasl_authenticate)},
+      "PLAIN", "#{username}\0#{username}\0#{password}", "")
+    {:ok, header, _key, _body, _extras} = send_and_receive(socket, bytes)
+    case header.status do
+      :ok ->
+        :ok
+      reason ->
+        {:error, reason}
+    end
+  end
+  defp do_sasl_auth(_, _, _, _), do: {:error, :unknown_sasl_auth_mechanism}
   
 end

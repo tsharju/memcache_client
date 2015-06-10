@@ -12,10 +12,14 @@ defmodule Memcache.Client do
     
     pool_args = [name: {:local, Memcache.Client.Pool},
                  worker_module: Memcache.Client.Worker,
-                 size: 10,
-                 max_overflow: 20]
-    worker_args = [host: "127.0.0.1",
-                   port: 11211]
+                 size: Application.get_env(:memcache_client, :pool_size, 5),
+                 max_overflow: Application.get_env(:memcache_client,
+                                                   :pool_max_overflow, 10)]
+    worker_args = [host: Application.get_env(:memcache_client, :host, "127.0.0.1"),
+                   port: Application.get_env(:memcache_client, :port, 11211),
+                   auth_method: Application.get_env(:memcache_client, :auth_method, :none),
+                   username: Application.get_env(:memcache_client, :username, ""),
+                   password: Application.get_env(:memcache_client, :password, "")]
     
     poolboy_sup = :poolboy.child_spec(Memcache.Client.Pool.Supervisor,
                                       pool_args, worker_args)

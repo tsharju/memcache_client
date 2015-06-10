@@ -63,6 +63,11 @@ defmodule Memcache.Client.Serialization do
   def opcode(:flushq),     do: 0x18
   def opcode(:appendq),    do: 0x19
   def opcode(:prependq),   do: 0x1A
+
+  # SASL auth
+  def opcode(:sasl_list_mechanisms), do: 0x20
+  def opcode(:sasl_authenticate),    do: 0x21
+  def opcode(:sasl_step),            do: 0x22
   
   def opcode_atom(0x00), do: :get
   def opcode_atom(0x01), do: :set
@@ -92,6 +97,11 @@ defmodule Memcache.Client.Serialization do
   def opcode_atom(0x19), do: :appendq
   def opcode_atom(0x1A), do: :prependq
 
+  # SASL auth
+  def opcode_atom(0x20), do: :sasl_list_mechanisms
+  def opcode_atom(0x21), do: :sasl_authenticate
+  def opcode_atom(0x22), do: :sasl_step
+  
   # status
 
   def status_atom(0x00), do: :ok
@@ -101,6 +111,8 @@ defmodule Memcache.Client.Serialization do
   def status_atom(0x04), do: :invalid_arguments
   def status_atom(0x05), do: :item_not_stored
   def status_atom(0x06), do: :incr_or_decr_on_non_numeric_value
+  def status_atom(0x20), do: :auth_failure
+  def status_atom(0x21), do: :auth_continue
   def status_atom(_),    do: :unknown_status
   
 end

@@ -22,3 +22,13 @@ use Mix.Config
 # here (which is why it is important to import them last).
 #
 #     import_config "#{Mix.env}.exs"
+
+config :memcache_client,
+  host: "127.0.0.1",
+  port: 11211,
+  auth_method: :none,
+  username: "",
+  password: "",
+  pool_size: 10,
+  pool_max_overflow: 20
+
