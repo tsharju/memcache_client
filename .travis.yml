@@ -7,4 +7,5 @@ otp_release:
 before_install:
   - echo "yes" | sudo add-apt-repository ppa:travis-ci/memcached-sasl
   - sudo apt-get update
-  - sudo apt-get install -y memcached=1.4.13-0ubuntu2+travis1
+  - sudo apt-get install -y memcached
+  - sudo service memcached start
