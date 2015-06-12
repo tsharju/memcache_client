@@ -3,7 +3,8 @@ defmodule Memcache.Client.Worker do
   @behaviour :poolboy_worker
 
   @_RECEIVE_TIMEOUT 5000
-  
+
+  alias Memcache.Client.Serialization.Header
   alias Memcache.Client.Serialization
 
   def start_link(args) do
@@ -51,11 +52,7 @@ defmodule Memcache.Client.Worker do
           {:ok, header} ->
             case receive_body(socket, header.total_body_length) do
               {:ok, total_body} ->
-                key_length = header.key_length
-                extras_length = header.extras_length
-                body_length = (header.total_body_length - (key_length + extras_length))
-                <<extras :: binary-size(extras_length), key :: binary-size(key_length),
-                body :: binary-size(body_length)>> = total_body
+                {:ok, key, body, extras} = Serialization.decode_response_body(header, total_body)
                 {:ok, header, key, body, extras}
               {:error, reason} ->
                 {:error, reason}
@@ -69,7 +66,7 @@ defmodule Memcache.Client.Worker do
   end
   
   defp receive_header(socket) do
-    case :gen_tcp.recv(socket, Serialization.Header.length, @_RECEIVE_TIMEOUT) do
+    case :gen_tcp.recv(socket, Header.length, @_RECEIVE_TIMEOUT) do
       {:ok, bytes} ->
         {:ok, header} = Serialization.decode_response_header(bytes)
         {:ok, header}
@@ -92,8 +89,7 @@ defmodule Memcache.Client.Worker do
 
   defp sasl_authenticate(socket, username, password) do
     bytes = Serialization.encode_request(
-      %Serialization.Header{
-        opcode: Serialization.opcode(:sasl_list_mechanisms)}, "", "", "")
+      %Header{opcode: :sasl_list_mechanisms}, "", "", "")
     {:ok, header, _key, body, _extras} = send_and_receive(socket, bytes)
 
     case header.status do
@@ -105,14 +101,13 @@ defmodule Memcache.Client.Worker do
     end
   end
 
-  defp do_sasl_auth([mechanism | mechanisms], username, password, socket) do
+  defp do_sasl_auth([mechanism | _mechanisms], username, password, socket) do
     do_sasl_auth(mechanism, username, password, socket)
   end
 
   defp do_sasl_auth("PLAIN", username, password, socket) do
     bytes = Serialization.encode_request(
-      %Serialization.Header{
-        opcode: Serialization.opcode(:sasl_authenticate)},
+      %Header{opcode: :sasl_authenticate},
       "PLAIN", "#{username}\0#{username}\0#{password}", "")
     {:ok, header, _key, _body, _extras} = send_and_receive(socket, bytes)
     case header.status do

@@ -4,7 +4,7 @@ defmodule Memcache.ClientTest.Serialization do
   alias Memcache.Client.Serialization
 
   test "encode request with only header and key" do
-    header = %Serialization.Header{opcode: Serialization.opcode :get}
+    header = %Serialization.Header{opcode: :get}
     
     bytes = Serialization.encode_request(header, "test")
     <<magic :: size(8), opcode :: size(8), _rest :: binary>> = bytes
@@ -15,7 +15,7 @@ defmodule Memcache.ClientTest.Serialization do
   end
 
   test "encode request with key and body" do
-    header = %Serialization.Header{opcode: Serialization.opcode :get}
+    header = %Serialization.Header{opcode: :get}
 
     bytes = Serialization.encode_request(header, "test", "test")    
     <<magic :: size(8), opcode :: size(8), _rest :: binary>> = bytes

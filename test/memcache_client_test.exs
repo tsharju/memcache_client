@@ -39,7 +39,7 @@ defmodule Memcache.ClientTest do
     assert get_response.status == :ok
     assert get_response.value == "value"
   end
-
+  
   test "add key" do
     add_response = Memcache.Client.add("key", "value")
     assert add_response.extras == ""

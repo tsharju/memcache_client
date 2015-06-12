@@ -1,7 +1,7 @@
 defmodule Memcache.Client do
   use Application
 
-  alias Memcache.Client.Serialization
+  alias Memcache.Client.Serialization.Header
 
   defmodule Response do
     defstruct value: "", extras: "", status: nil, cas: 0, type_flag: 0
@@ -34,7 +34,7 @@ defmodule Memcache.Client do
   
   def get(key) do
     worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Serialization.Header{opcode: Serialization.opcode :get}
+    header = %Header{opcode: :get}
     reply = GenServer.call(worker, {:request, header, key, "", ""})
     :poolboy.checkin(Memcache.Client.Pool, worker)
     
@@ -43,7 +43,7 @@ defmodule Memcache.Client do
         if header.status == :ok do
           <<type_flag :: size(32)>> = extras
           case Memcache.Client.Transcoder.decode_value(body, type_flag) do
-            {:error, error} ->
+            {:error, _error} ->
               header = %{header | status: :transcode_error}
               value = "Transcode error"
             value ->
@@ -73,7 +73,7 @@ defmodule Memcache.Client do
     extras = <<flags :: size(32), expires :: size(32)>>
     
     worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Serialization.Header{opcode: Serialization.opcode(opcode), cas: cas}
+    header = %Header{opcode: opcode, cas: cas}
     reply = GenServer.call(worker, {:request, header, key, value, extras})
     :poolboy.checkin(Memcache.Client.Pool, worker)
     
@@ -87,7 +87,7 @@ defmodule Memcache.Client do
 
   def delete(key) do
     worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Serialization.Header{opcode: Serialization.opcode :delete}
+    header = %Header{opcode: :delete}
     reply = GenServer.call(worker, {:request, header, key, "", ""})
     :poolboy.checkin(Memcache.Client.Pool, worker)
     
@@ -110,7 +110,7 @@ defmodule Memcache.Client do
     extras = <<amount :: size(64), initial_value :: size(64), expires :: size(32)>>
 
     worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Serialization.Header{opcode: Serialization.opcode(opcode)}
+    header = %Header{opcode: opcode}
     reply = GenServer.call(worker, {:request, header, key, "", extras})
     :poolboy.checkin(Memcache.Client.Pool, worker)
     
@@ -131,7 +131,7 @@ defmodule Memcache.Client do
     extras = <<expires :: size(32)>>
 
     worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Serialization.Header{opcode: Serialization.opcode :flush}
+    header = %Header{opcode: :flush}
     reply = GenServer.call(worker, {:request, header, "", "", extras})
     :poolboy.checkin(Memcache.Client.Pool, worker)
 
@@ -145,7 +145,7 @@ defmodule Memcache.Client do
 
   def version() do
     worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Serialization.Header{opcode: Serialization.opcode :version}
+    header = %Header{opcode: :version}
     reply = GenServer.call(worker, {:request, header, "", "", ""})
     :poolboy.checkin(Memcache.Client.Pool, worker)
 
