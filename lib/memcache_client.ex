@@ -2,9 +2,14 @@ defmodule Memcache.Client do
   use Application
 
   alias Memcache.Client.Serialization.Header
-
+  alias Memcache.Client.Serialization.Opcode
+  
   defmodule Response do
-    defstruct value: "", extras: "", status: nil, cas: 0, type_flag: 0
+    defstruct key: "", value: "", extras: "", status: nil, cas: 0, data_type: nil
+  end
+  
+  defmodule Request do
+    defstruct opcode: nil, key: "", body: "", extras: "", cas: 0
   end
   
   def start(_type, _args) do
@@ -33,30 +38,78 @@ defmodule Memcache.Client do
   end
   
   def get(key) do
-    worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Header{opcode: :get}
-    reply = GenServer.call(worker, {:request, header, key, "", ""})
-    :poolboy.checkin(Memcache.Client.Pool, worker)
+    request = %Request{opcode: :get, key: key}
+    [response] = multi_request([request], false)
     
-    case reply do
-      {:ok, header, _key, body, extras} ->
-        if header.status == :ok do
-          <<type_flag :: size(32)>> = extras
-          case Memcache.Client.Transcoder.decode_value(body, type_flag) do
-            {:error, _error} ->
-              header = %{header | status: :transcode_error}
-              value = "Transcode error"
-            value ->
-              value = value
+    response
+  end
+
+  def mget(keys) do
+    requests = Enum.map(keys, &(%Request{opcode: :get, key: &1}))
+    multi_request(requests)
+  end
+
+  def multi_request(requests, return_stream \\ true) do
+    stream = Stream.resource(
+      fn ->
+        worker = :poolboy.checkout(Memcache.Client.Pool)
+        :ok = do_multi_request(requests, worker)
+        {worker, :cont}
+      end,
+      fn
+        {worker, :cont} = acc ->
+          # stream responses
+          receive do
+            {:response, {:ok, header, key, body, extras}} ->
+              response = %Response{status: header.status, cas: header.cas,
+                                   key: key, value: body, extras: extras}
+
+              # apply transcoder for get operations
+              if extras != "" and Opcode.get?(header.opcode) do
+                <<type_flag :: size(32)>> = extras
+                case Memcache.Client.Transcoder.decode_value(response.value, type_flag) do
+                  {:error, _error} ->
+                    response = %{response | status: :transcode_error,
+                                 value: "Transcode error"}
+                  value ->
+                    response = %{response | value: value, data_type: type_flag}
+                end
+              end
+              
+              if not Opcode.quiet?(header.opcode) do
+                # we'll halt since there won't be anymore results
+                {[response], {worker, :halt}}
+              else
+                {[response], acc}
+              end
           end
-        else
-          value = body
-        end
-        %Response{value: value, extras: extras, status: header.status,
-                  cas: header.cas, type_flag: type_flag}
-      error ->
-        error
+        {_worker, :halt} = acc ->
+          {:halt, acc}
+      end,
+      fn {worker, _} ->
+        :poolboy.checkin(Memcache.Client.Pool, worker)
+      end)
+    
+    if return_stream do
+      stream
+    else
+      stream |> Enum.into([])
     end
+  end
+  
+  defp do_multi_request([request], worker) do
+    GenServer.cast(worker, {:request, self,
+                            %Header{opcode: request.opcode, cas: request.cas},
+                            request.key, request.body, request.extras})
+  end
+  
+  defp do_multi_request([request | requests], worker) do
+    GenServer.cast(worker,
+                   {:request,
+                    self,
+                    %Header{opcode: Opcode.to_quiet(request.opcode), cas: request.cas},
+                    request.key, request.body, request.extras})
+    do_multi_request(requests, worker)
   end
   
   def set(key, value, opts \\ []), do: do_store(:set, key, value, opts)
@@ -71,32 +124,18 @@ defmodule Memcache.Client do
 
     {value, flags} = Memcache.Client.Transcoder.encode_value(value)
     extras = <<flags :: size(32), expires :: size(32)>>
-    
-    worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Header{opcode: opcode, cas: cas}
-    reply = GenServer.call(worker, {:request, header, key, value, extras})
-    :poolboy.checkin(Memcache.Client.Pool, worker)
-    
-    case reply do
-      {:ok, header, _key, body, extras} ->
-        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
-      error ->
-        error
-    end
+
+    request = %Request{opcode: opcode, key: key, body: value, extras: extras, cas: cas}
+    [response] = multi_request([request], false)
+        
+    response
   end
 
   def delete(key) do
-    worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Header{opcode: :delete}
-    reply = GenServer.call(worker, {:request, header, key, "", ""})
-    :poolboy.checkin(Memcache.Client.Pool, worker)
-    
-    case reply do
-      {:ok, header, _key, body, extras} ->
-        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
-      error ->
-        error
-    end
+    request = %Request{opcode: :delete, key: key}
+    [response] = multi_request([request], false)
+
+    response
   end
 
   def increment(key, amount, opts \\ []), do: do_incr_decr(:increment, key, amount, opts)
@@ -109,52 +148,33 @@ defmodule Memcache.Client do
     
     extras = <<amount :: size(64), initial_value :: size(64), expires :: size(32)>>
 
-    worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Header{opcode: opcode}
-    reply = GenServer.call(worker, {:request, header, key, "", extras})
-    :poolboy.checkin(Memcache.Client.Pool, worker)
+    request = %Request{opcode: opcode, key: key, extras: extras}
+    [response] = multi_request([request], false)
     
-    case reply do
-      {:ok, header, _key, body, extras} ->
-        if header.status == :ok do
-          <<body :: unsigned-integer-size(64)>> = body
-        end
-        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
-      error ->
-        error
+    if response.status == :ok do
+      <<value :: unsigned-integer-size(64)>> = response.value
+      %{response | value: value}
+    else
+      response
     end
   end
-
+  
   def flush(opts \\ []) do
     expires = Keyword.get(opts, :expires, 0)
 
     extras = <<expires :: size(32)>>
 
-    worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Header{opcode: :flush}
-    reply = GenServer.call(worker, {:request, header, "", "", extras})
-    :poolboy.checkin(Memcache.Client.Pool, worker)
-
-    case reply do
-      {:ok, header, _key, body, extras} ->
-        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
-      error ->
-        error
-    end
+    request = %Request{opcode: :flush, extras: extras}
+    [response] = multi_request([request], false)
+    
+    response
   end
 
   def version() do
-    worker = :poolboy.checkout(Memcache.Client.Pool)
-    header = %Header{opcode: :version}
-    reply = GenServer.call(worker, {:request, header, "", "", ""})
-    :poolboy.checkin(Memcache.Client.Pool, worker)
-
-    case reply do
-      {:ok, header, _key, body, extras} ->
-        %Response{value: body, extras: extras, status: header.status, cas: header.cas}
-      error ->
-        error
-    end
+    request = %Request{opcode: :version}
+    [response] = multi_request([request], false)
+    
+    response
   end
   
 end

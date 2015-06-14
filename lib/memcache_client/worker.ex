@@ -4,6 +4,9 @@ defmodule Memcache.Client.Worker do
 
   @_RECEIVE_TIMEOUT 5000
 
+  @initial_state %{socket: nil, from: nil}
+
+  alias Memcache.Client.Serialization.Opcode
   alias Memcache.Client.Serialization.Header
   alias Memcache.Client.Serialization
 
@@ -16,7 +19,7 @@ defmodule Memcache.Client.Worker do
     port        = Keyword.get(args, :port, 11211)
     auth_method = Keyword.get(args, :auth_method, :none)
     
-    socket_opts = [:binary, {:nodelay, true}, {:active, false}, {:packet, 0}]
+    socket_opts = [:binary, {:nodelay, true}, {:active, false}, {:packet, :raw}]
     {:ok, socket} = :gen_tcp.connect(String.to_char_list(host), port, socket_opts)
 
     case auth_method do
@@ -26,40 +29,51 @@ defmodule Memcache.Client.Worker do
         
         case sasl_authenticate(socket, username, password) do
           :ok ->
-            {:ok, %{socket: socket}}
+            {:ok, %{@initial_state | socket: socket}}
           error ->
             error
         end
       :none ->
-        {:ok, %{socket: socket}}
+        {:ok, %{@initial_state | socket: socket}}
     end
   end
   
-  def handle_call({:request, header, key, body, extras}, _from, %{socket: socket} = state) do
+  def handle_cast({:request, from, header, key, body, extras}, %{socket: socket} = state) do
     bytes = Serialization.encode_request(header, key, body, extras)
-    case send_and_receive(socket, bytes) do
-      {:error, reason} ->
-        {:stop, reason, {:error, reason}, state}
-      reply ->
-        {:reply, reply, state}
+    :gen_tcp.send(socket, bytes)
+    
+    # start receiving if non quiet operation
+    if not Opcode.quiet?(header.opcode) do
+      do_receive(socket, from)
     end
+    
+    {:noreply, %{state | from: from}}
   end
-  
-  defp send_and_receive(socket, bytes) do
-    case :gen_tcp.send(socket, bytes) do
-      :ok ->
-        case receive_header(socket) do
-          {:ok, header} ->
-            case receive_body(socket, header.total_body_length) do
-              {:ok, total_body} ->
-                {:ok, key, body, extras} = Serialization.decode_response_body(header, total_body)
-                {:ok, header, key, body, extras}
-              {:error, reason} ->
-                {:error, reason}
+
+  defp do_receive(socket, reply_to) do
+    case receive_header(socket) do
+      {:ok, header} ->
+        case receive_body(socket, header.total_body_length) do
+          {:ok, total_body} ->
+            {:ok, key, body, extras} = Serialization.decode_response_body(header, total_body)
+            if reply_to != nil do
+              # if we have pid we send the response there
+              Kernel.send(reply_to, {:response, {:ok, header, key, body, extras}})
+              # read until non quiet opcode
+              if Opcode.quiet?(header.opcode) do
+                do_receive(socket, reply_to)
+              end
+            else
+              # just return the response
+              {:ok, header, key, body, extras}
             end
+          {:error, reason} when reply_to != nil ->
+            Kernel.send(reply_to, {:error, reason})
           {:error, reason} ->
             {:error, reason}
         end
+      {:error, reason} when reply_to != nil ->
+        Kernel.send(reply_to, {:error, reason})
       {:error, reason} ->
         {:error, reason}
     end
@@ -83,6 +97,11 @@ defmodule Memcache.Client.Worker do
       error ->
         error
     end
+  end
+
+  defp send_and_receive(socket, bytes) do
+    :ok = :gen_tcp.send(socket, bytes)
+    do_receive(socket, nil)    
   end
 
   # SASL authentication

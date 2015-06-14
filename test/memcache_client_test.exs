@@ -3,16 +3,20 @@ defmodule Memcache.ClientTest do
 
   setup do
     flush_response = Memcache.Client.flush
-    :ok = flush_response.status
+    flush_response.status
 
     :ok
+  end
+
+  test "get key not found" do
+    get_response = Memcache.Client.get("key")
+    assert get_response.status == :key_not_found
   end
   
   test "set key" do
     set_response = Memcache.Client.set("key", "value")
     assert set_response.extras == ""
     assert set_response.status == :ok
-    assert set_response.type_flag == 0
 
     get_response = Memcache.Client.get("key")
     assert get_response.cas == set_response.cas
@@ -44,7 +48,6 @@ defmodule Memcache.ClientTest do
     add_response = Memcache.Client.add("key", "value")
     assert add_response.extras == ""
     assert add_response.status == :ok
-    assert add_response.type_flag == 0
 
     get_response = Memcache.Client.get("key") 
     assert get_response.cas == add_response.cas 
