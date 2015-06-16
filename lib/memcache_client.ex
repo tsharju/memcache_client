@@ -176,5 +176,19 @@ defmodule Memcache.Client do
     
     response
   end
+
+  def append(key, value) do
+    request = %Request{opcode: :append, key: key, body: value}
+    [response] = multi_request([request], false)
+
+    response
+  end
+
+  def prepend(key, value) do
+    request = %Request{opcode: :prepend, key: key, body: value}
+    [response] = multi_request([request], false)
+
+    response
+  end
   
 end

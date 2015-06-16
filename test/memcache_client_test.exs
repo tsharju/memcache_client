@@ -127,5 +127,33 @@ defmodule Memcache.ClientTest do
     get_response = Memcache.Client.get("key")
     assert get_response.status == :key_not_found
   end
-  
+
+  test "append" do
+    append_response = Memcache.Client.append("key", "value")
+    assert append_response.status == :item_not_stored
+    
+    set_response = Memcache.Client.set("key", "value")
+    assert set_response.status == :ok
+
+    append_response = Memcache.Client.append("key", " value")
+    assert append_response.status == :ok
+
+    get_response = Memcache.Client.get("key")
+    assert get_response.value == "value value"
+  end
+
+  test "prepend" do
+    prepend_response = Memcache.Client.prepend("key", "value")
+    assert prepend_response.status == :item_not_stored
+    
+    set_response = Memcache.Client.set("key", "value")
+    assert set_response.status == :ok
+
+    prepend_response = Memcache.Client.prepend("key", "value ")
+    assert prepend_response.status == :ok
+    
+    get_response = Memcache.Client.get("key")
+    assert get_response.value == "value value"
+  end
+
 end
