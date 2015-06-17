@@ -1,15 +1,28 @@
 defmodule Memcache.Client do
+
+  @moduledoc"""
+  Binary protocol client for Memcached server.
+  """
+  
   use Application
 
   alias Memcache.Client.Serialization.Header
   alias Memcache.Client.Serialization.Opcode
+
+  @type key :: binary
+  @type value :: any
+  @type opts :: Keyword.t
   
   defmodule Response do
     defstruct key: "", value: "", extras: "", status: nil, cas: 0, data_type: nil
+    @type t :: %Response{key: binary, value: any, extras: binary, status: atom,
+                         cas: non_neg_integer, data_type: non_neg_integer}
   end
   
   defmodule Request do
     defstruct opcode: nil, key: "", body: "", extras: "", cas: 0
+    @type t :: %Request{opcode: atom, key: binary, body: any,
+                        extras: binary, cas: non_neg_integer}
   end
   
   def start(_type, _args) do
@@ -36,7 +49,11 @@ defmodule Memcache.Client do
     opts = [strategy: :one_for_one, name: Memcache.Client.Supervisor]
     Supervisor.start_link(children, opts)
   end
-  
+
+  @doc """
+  Gets `value` for given `key`.
+  """
+  @spec get(key) :: Response.t
   def get(key) do
     request = %Request{opcode: :get, key: key}
     [response] = multi_request([request], false)
@@ -44,12 +61,107 @@ defmodule Memcache.Client do
     response
   end
 
+  @doc """
+  Gets values for multiple `keys` with a single pipelined operation.
+  """
+  @spec mget(Enumerable.t) :: Stream.t
   def mget(keys) do
     requests = Enum.map(keys, &(%Request{opcode: :get, key: &1}))
     multi_request(requests)
   end
 
-  def multi_request(requests, return_stream \\ true) do
+  @doc """
+  Sets `value` for given `key`.
+  """
+  @spec set(key, value, opts) :: Response.t
+  def set(key, value, opts \\ []), do: do_store(:set, key, value, opts)
+
+  @doc """
+  Sets `value` for given `key` only if it does not already exist.
+  """
+  @spec add(key, value, opts) :: Response.t
+  def add(key, value, opts \\ []), do: do_store(:add, key, value, opts)
+
+  @doc """
+  Sets `value`for given `key` only if it already exists.
+  """
+  @spec replace(key, value, opts) :: Response.t
+  def replace(key, value, opts \\ []), do: do_store(:replace, key, value, opts)
+
+  @doc """
+  Appends `value` to given `key` if it already exists.
+  """
+  @spec append(key, value) :: Response.t
+  def append(key, value) do
+    request = %Request{opcode: :append, key: key, body: value}
+    [response] = multi_request([request], false)
+
+    response
+  end
+
+  @doc """
+  Prepends `value` to given `key` if it already exists.
+  """
+  @spec prepend(key, value) :: Response.t
+  def prepend(key, value) do
+    request = %Request{opcode: :prepend, key: key, body: value}
+    [response] = multi_request([request], false)
+
+    response
+  end
+  
+  @doc """
+  Deletes the `value` for the given `key`.
+  """
+  @spec delete(key) :: Response.t
+  def delete(key) do
+    request = %Request{opcode: :delete, key: key}
+    [response] = multi_request([request], false)
+
+    response
+  end
+
+  @doc """
+  Increments a counter on given `key`.
+  """
+  @spec increment(key, pos_integer, opts) :: Response.t
+  def increment(key, amount, opts \\ []), do: do_incr_decr(:increment, key, amount, opts)
+
+  @doc """
+  Decrements a counter on given `key`.
+  """
+  @spec decrement(key, pos_integer, opts) :: Response.t
+  def decrement(key, amount, opts \\ []), do: do_incr_decr(:decrement, key, amount, opts)
+
+  @doc """
+  Flushes the cache.
+  """
+  @spec flush(opts) :: Response.t
+  def flush(opts \\ []) do
+    expires = Keyword.get(opts, :expires, 0)
+
+    extras = <<expires :: size(32)>>
+
+    request = %Request{opcode: :flush, extras: extras}
+    [response] = multi_request([request], false)
+    
+    response
+  end
+
+  @doc """
+  Returns the current memcached version.
+  """
+  @spec version() :: Response.t
+  def version() do
+    request = %Request{opcode: :version}
+    [response] = multi_request([request], false)
+    
+    response
+  end
+
+  ## private api
+  
+  defp multi_request(requests, return_stream \\ true) do
     stream = Stream.resource(
       fn ->
         worker = :poolboy.checkout(Memcache.Client.Pool)
@@ -111,13 +223,7 @@ defmodule Memcache.Client do
                     request.key, request.body, request.extras})
     do_multi_request(requests, worker)
   end
-  
-  def set(key, value, opts \\ []), do: do_store(:set, key, value, opts)
-  
-  def add(key, value, opts \\ []), do: do_store(:add, key, value, opts)
-  
-  def replace(key, value, opts \\ []), do: do_store(:replace, key, value, opts)
-  
+
   defp do_store(opcode, key, value, opts) do
     expires = Keyword.get(opts, :expires, 0)
     cas     = Keyword.get(opts, :cas, 0)
@@ -131,17 +237,6 @@ defmodule Memcache.Client do
     response
   end
 
-  def delete(key) do
-    request = %Request{opcode: :delete, key: key}
-    [response] = multi_request([request], false)
-
-    response
-  end
-
-  def increment(key, amount, opts \\ []), do: do_incr_decr(:increment, key, amount, opts)
-  
-  def decrement(key, amount, opts \\ []), do: do_incr_decr(:decrement, key, amount, opts)
-  
   defp do_incr_decr(opcode, key, amount, opts) do
     initial_value = Keyword.get(opts, :initial_value, 0)
     expires       = Keyword.get(opts, :expires, 0)
@@ -158,37 +253,5 @@ defmodule Memcache.Client do
       response
     end
   end
-  
-  def flush(opts \\ []) do
-    expires = Keyword.get(opts, :expires, 0)
 
-    extras = <<expires :: size(32)>>
-
-    request = %Request{opcode: :flush, extras: extras}
-    [response] = multi_request([request], false)
-    
-    response
-  end
-
-  def version() do
-    request = %Request{opcode: :version}
-    [response] = multi_request([request], false)
-    
-    response
-  end
-
-  def append(key, value) do
-    request = %Request{opcode: :append, key: key, body: value}
-    [response] = multi_request([request], false)
-
-    response
-  end
-
-  def prepend(key, value) do
-    request = %Request{opcode: :prepend, key: key, body: value}
-    [response] = multi_request([request], false)
-
-    response
-  end
-  
 end
