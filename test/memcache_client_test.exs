@@ -156,4 +156,24 @@ defmodule Memcache.ClientTest do
     assert get_response.value == "value value"
   end
 
+  test "multi get" do
+    keys = ["test1", "test2", "test3"]
+    [mget_response] = Memcache.Client.mget(keys) |> Enum.into([])
+    assert mget_response.status == :key_not_found
+
+    set_response = Memcache.Client.set("key1", "value1")
+    assert set_response.status == :ok
+
+    set_response = Memcache.Client.set("key2", "value2")
+    assert set_response.status == :ok
+
+    keys = ["key1", "key2", "key3"]
+    [response1, response2, response3] = Memcache.Client.mget(keys) |> Enum.into([])
+    assert response1.status == :ok
+    assert response1.value == "value1"
+    assert response2.status == :ok
+    assert response2.value == "value2"
+    assert response3.status == :key_not_found
+  end
+  
 end
