@@ -72,6 +72,10 @@ defmodule Memcache.Client.Serialization.Opcode do
     opcode in [:get, :getq, :getk, :getkq]
   end
 
+  def set?(opcode) do
+    opcode in [:set, :setq]
+  end
+
   def to_quiet(:get),       do: :getq
   def to_quiet(:getk),      do: :getkq
   def to_quiet(:set),       do: :setq

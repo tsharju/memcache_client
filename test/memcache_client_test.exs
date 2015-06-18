@@ -175,5 +175,19 @@ defmodule Memcache.ClientTest do
     assert response2.value == "value2"
     assert response3.status == :key_not_found
   end
+
+  test "multi set" do
+    keyvals = [{"key1", "value1"}, {"key2", "value2"}]
+    [mset_response] = Memcache.Client.mset(keyvals) |> Enum.into([])
+    assert mset_response.status == :ok
+
+    get_response = Memcache.Client.get("key1")
+    assert get_response.status == :ok
+    assert get_response.value == "value1"
+
+    get_response = Memcache.Client.get("key2")
+    assert get_response.status == :ok
+    assert get_response.value == "value2"
+  end
   
 end

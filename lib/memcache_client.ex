@@ -77,6 +77,20 @@ defmodule Memcache.Client do
   def set(key, value, opts \\ []), do: do_store(:set, key, value, opts)
 
   @doc """
+  Sets multiple `values` with a single pipelined operation. Value
+  needs to be a tuple of `key` and `value`.
+  """
+  @spec mset(Enumerable.t) :: Stream.t
+  def mset(keyvalues) do
+    requests = keyvalues
+    |> Enum.map(
+      fn {key, value} ->
+        store_request(:set, key, value, [])
+      end)
+    multi_request(requests)
+  end
+  
+  @doc """
   Sets `value` for given `key` only if it does not already exist.
   """
   @spec add(key, value, opts) :: Response.t
@@ -225,16 +239,20 @@ defmodule Memcache.Client do
   end
 
   defp do_store(opcode, key, value, opts) do
+    request = store_request(opcode, key, value, opts)
+    [response] = multi_request([request], false)
+        
+    response
+  end
+
+  defp store_request(opcode, key, value, opts) do
     expires = Keyword.get(opts, :expires, 0)
     cas     = Keyword.get(opts, :cas, 0)
 
     {value, flags} = Memcache.Client.Transcoder.encode_value(value)
     extras = <<flags :: size(32), expires :: size(32)>>
 
-    request = %Request{opcode: opcode, key: key, body: value, extras: extras, cas: cas}
-    [response] = multi_request([request], false)
-        
-    response
+    %Request{opcode: opcode, key: key, body: value, extras: extras, cas: cas}
   end
 
   defp do_incr_decr(opcode, key, amount, opts) do
