@@ -20,8 +20,8 @@ defmodule Memcache.Client do
   end
   
   defmodule Request do
-    defstruct opcode: nil, key: "", body: "", extras: "", cas: 0
-    @type t :: %Request{opcode: atom, key: binary, body: any,
+    defstruct opcode: nil, key: "", value: "", extras: "", cas: 0
+    @type t :: %Request{opcode: atom, key: binary, value: any,
                         extras: binary, cas: non_neg_integer}
   end
   
@@ -107,9 +107,9 @@ defmodule Memcache.Client do
   """
   @spec append(key, value) :: Response.t
   def append(key, value) do
-    request = %Request{opcode: :append, key: key, body: value}
+    request = %Request{opcode: :append, key: key, value: value}
     [response] = multi_request([request], false)
-
+    
     response
   end
 
@@ -118,7 +118,7 @@ defmodule Memcache.Client do
   """
   @spec prepend(key, value) :: Response.t
   def prepend(key, value) do
-    request = %Request{opcode: :prepend, key: key, body: value}
+    request = %Request{opcode: :prepend, key: key, value: value}
     [response] = multi_request([request], false)
 
     response
@@ -186,9 +186,9 @@ defmodule Memcache.Client do
         {worker, :cont} = acc ->
           # stream responses
           receive do
-            {:response, {:ok, header, key, body, extras}} ->
+            {:response, {:ok, header, key, value, extras}} ->
               response = %Response{status: header.status, cas: header.cas,
-                                   key: key, value: body, extras: extras}
+                                   key: key, value: value, extras: extras}
 
               # apply transcoder for get operations
               if extras != "" and Opcode.get?(header.opcode) do
@@ -226,7 +226,7 @@ defmodule Memcache.Client do
   defp do_multi_request([request], worker) do
     GenServer.cast(worker, {:request, self,
                             %Header{opcode: request.opcode, cas: request.cas},
-                            request.key, request.body, request.extras})
+                            request.key, request.value, request.extras})
   end
   
   defp do_multi_request([request | requests], worker) do
@@ -234,7 +234,7 @@ defmodule Memcache.Client do
                    {:request,
                     self,
                     %Header{opcode: Opcode.to_quiet(request.opcode), cas: request.cas},
-                    request.key, request.body, request.extras})
+                    request.key, request.value, request.extras})
     do_multi_request(requests, worker)
   end
 
@@ -252,7 +252,7 @@ defmodule Memcache.Client do
     {value, flags} = Memcache.Client.Transcoder.encode_value(value)
     extras = <<flags :: size(32), expires :: size(32)>>
 
-    %Request{opcode: opcode, key: key, body: value, extras: extras, cas: cas}
+    %Request{opcode: opcode, key: key, value: value, extras: extras, cas: cas}
   end
 
   defp do_incr_decr(opcode, key, amount, opts) do
