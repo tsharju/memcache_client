@@ -26,25 +26,23 @@ defmodule Memcache.Client.Benchmark do
   def run() do
     <<a::size(32), b::size(32), c::size(32)>> = :crypto.rand_bytes(12)
     :random.seed(a, b, c)
-    
-    IO.puts "Starting the Memcache.Client connection pool."
-    IO.puts ""
 
     # configure connection pool size
-    :ok = Application.put_env(:memcache_client, :pool_size, 5)
+    :ok = Application.put_env(:memcache_client, :pool_size, 10)
+    :ok = Application.put_env(:memcache_client, :pool_max_overflow, 0)
     
     {:ok, _started} = Application.ensure_all_started(:memcache_client)
 
     test_data_1k = unquote(test_data_1k)
     test_data_64k = unquote(test_data_64k)
     
-    test_set(100, 100, test_data_1k)
-    test_set(100, 100, test_data_64k)
+    test_set(10, 1000, test_data_1k)
+    test_set(10, 1000, test_data_64k)
     
-    test_get(100, 100)
+    test_get(10, 1000)
     
-    test_mset(100, 100, test_data_1k)
-    test_mset(100, 100, test_data_64k)
+    test_mset(10, 1000, test_data_1k)
+    test_mset(10, 1000, test_data_64k)
   end
   
   defp test_set(num, num_ops, data) do
@@ -56,13 +54,14 @@ defmodule Memcache.Client.Benchmark do
       fn idx ->
         Task.async(
           fn ->
+            pid = :erlang.pid_to_list(self) |> to_string
             start = :erlang.timestamp
             Enum.each(1..num_ops,
               fn i ->
-                response = Memcache.Client.set("key#{idx}.#{i}", data)
+                response = Memcache.Client.set("key#{idx}.#{i}.#{pid}", data)
                 response.status == :ok
               end)
-            took = (:timer.now_diff(:erlang.timestamp, start) / 1000000) / num_ops
+            took = round(:timer.now_diff(:erlang.timestamp, start) / num_ops)
             {:ok, took}
           end)
       end)
@@ -71,11 +70,11 @@ defmodule Memcache.Client.Benchmark do
     results = do_receive(refs, []) # wait until all testers exit
     
     count   = Enum.count(results)
-    min     = Enum.min(results)
-    max     = Enum.max(results)
+    min     = Enum.min(results) |> formatted_diff
+    max     = Enum.max(results) |> formatted_diff
     sum     = Enum.sum(results)
-    avg     = (sum / count)
-    per_sec = 1 / avg
+    avg     = round(sum / count) |> formatted_diff
+    per_sec = 1000000 / (sum / count)
     
     IO.puts "max: #{max} min: #{min} avg: #{avg} #{per_sec} sets/s"
     IO.puts ""
@@ -83,17 +82,19 @@ defmodule Memcache.Client.Benchmark do
 
   def test_mset(num, num_ops, data) do
     kbytes = :erlang.trunc(byte_size(data) / 1024)
-    IO.puts "Starting #{num} processes. Doing #{num_ops} pipelined set operations (#{kbytes} kB)."
+    chunk_size = 100
+    IO.puts "Starting #{num} processes. Doing #{num_ops} pipelined (#{chunk_size}) set operations (#{kbytes} kB)."
     
     refs = Enum.map(
       1..num,
       fn idx ->
         Task.async(
           fn ->
-            keyvals = Enum.chunk(1..num_ops, 10)
+            pid = :erlang.pid_to_list(self) |> to_string
+            keyvals = Enum.chunk(1..num_ops, chunk_size)
             |> Enum.map(
               fn chunk ->
-                Enum.map(chunk, fn i -> {"key#{idx}.#{i}", data} end)
+                Enum.map(chunk, fn i -> {"key#{idx}.#{i}.#{pid}", data} end)
               end)
             start = :erlang.timestamp
             
@@ -103,20 +104,20 @@ defmodule Memcache.Client.Benchmark do
                 response.status == :ok
               end)
             
-            took = (:timer.now_diff(:erlang.timestamp, start) / 1000000) / num_ops
+            took = round(:timer.now_diff(:erlang.timestamp, start) / num_ops)
             {:ok, took}
           end)
       end)
     |> Enum.into(HashSet.new, fn task -> task.ref end)
 
     results = do_receive(refs, []) # wait until all testers exit
-
+    
     count   = Enum.count(results)
-    min     = Enum.min(results)
-    max     = Enum.max(results)
+    min     = Enum.min(results) |> formatted_diff
+    max     = Enum.max(results) |> formatted_diff
     sum     = Enum.sum(results)
-    avg     = (sum / count)
-    per_sec = 1 / avg
+    avg     = round(sum / count) |> formatted_diff
+    per_sec = 1000000 / (sum / count)
 
     IO.puts "max: #{max} min: #{min} avg: #{avg} #{per_sec} sets/s"
     IO.puts ""
@@ -136,7 +137,7 @@ defmodule Memcache.Client.Benchmark do
                 response = Memcache.Client.get("key#{idx}.#{i}")
                 response.status == :ok
               end)
-            took = (:timer.now_diff(:erlang.timestamp, start) / 1000000) / num_ops
+            took = round(:timer.now_diff(:erlang.timestamp, start) /  num_ops)
             {:ok, took}
           end)
       end)
@@ -145,14 +146,24 @@ defmodule Memcache.Client.Benchmark do
     results = do_receive(refs, []) # wait until all testers exit
     
     count   = Enum.count(results)
-    min     = Enum.min(results)
-    max     = Enum.max(results)
+    min     = Enum.min(results) |> formatted_diff
+    max     = Enum.max(results) |> formatted_diff
     sum     = Enum.sum(results)
-    avg     = (sum / count)
-    per_sec = 1 / avg
+    avg     = round(sum / count) |> formatted_diff
+    per_sec = 1000000 / (sum / count)
 
     IO.puts "max: #{max} min: #{min} avg: #{avg} #{per_sec} gets/s"
     IO.puts ""
+  end
+
+  defp formatted_diff(diff) when diff > 1000 do
+    diff = diff |> div(1000) |> Integer.to_string
+    "#{diff}ms"
+  end
+  
+  defp formatted_diff(diff) do
+    diff = Integer.to_string(diff)
+    "#{diff}µs"
   end
   
 end
