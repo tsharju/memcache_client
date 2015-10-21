@@ -21,7 +21,7 @@ defmodule Memcache.Client.Worker do
     
     socket_opts = [:binary, {:nodelay, true}, {:active, false}, {:packet, :raw}]
     {:ok, socket} = :gen_tcp.connect(String.to_char_list(host), port, socket_opts)
-
+    
     case auth_method do
       :sasl ->
         username = Keyword.get(args, :username, "")
@@ -50,6 +50,10 @@ defmodule Memcache.Client.Worker do
     {:noreply, %{state | from: from}}
   end
 
+  def terminate(reason, %{socket: socket} = state) do
+    :gen_tcp.close(socket)
+  end
+  
   defp do_receive(socket, reply_to) do
     case receive_header(socket) do
       {:ok, header} ->
