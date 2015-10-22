@@ -50,7 +50,7 @@ defmodule Memcache.Client.Worker do
     {:noreply, %{state | from: from}}
   end
 
-  def terminate(reason, %{socket: socket} = state) do
+  def terminate(_reason, %{socket: socket} = _state) do
     :gen_tcp.close(socket)
   end
   
