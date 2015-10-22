@@ -36,13 +36,13 @@ defmodule Memcache.Client.Benchmark do
     test_data_1k = unquote(test_data_1k)
     test_data_64k = unquote(test_data_64k)
     
-    test_set(10, 1000, test_data_1k)
-    test_set(10, 1000, test_data_64k)
+    test_set(1, 1000, test_data_1k)
+    test_set(1, 1000, test_data_64k)
     
-    test_get(10, 1000)
+    test_get(1, 1000)
     
-    test_mset(10, 1000, test_data_1k)
-    test_mset(10, 1000, test_data_64k)
+    test_mset(1, 1000, test_data_1k)
+    test_mset(1, 1000, test_data_64k)
   end
   
   defp test_set(num, num_ops, data) do
