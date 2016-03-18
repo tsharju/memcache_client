@@ -6,8 +6,18 @@ defmodule Memcache.Client do
   
   use Application
 
-  alias Memcache.Client.Serialization.Header
   alias Memcache.Client.Serialization.Opcode
+  alias Memcache.Client.Worker
+
+  @default_pool_size 5
+  @default_pool_max_overflow 20
+  @default_host '127.0.0.1'
+  @default_port 11211
+  @default_auth_method :none
+  @default_username ""
+  @default_password ""
+  @default_timeout 5000
+  @default_socket_opts [:binary, {:nodelay, true}, {:active, false}, {:packet, :raw}]
 
   @type key :: binary
   @type value :: any
@@ -30,14 +40,16 @@ defmodule Memcache.Client do
     
     pool_args = [name: {:local, Memcache.Client.Pool},
                  worker_module: Memcache.Client.Worker,
-                 size: Application.get_env(:memcache_client, :pool_size, 5),
+                 size: Application.get_env(:memcache_client, :pool_size, @default_pool_size),
                  max_overflow: Application.get_env(:memcache_client,
-                                                   :pool_max_overflow, 10)]
-    worker_args = [host: Application.get_env(:memcache_client, :host, "127.0.0.1"),
-                   port: Application.get_env(:memcache_client, :port, 11211),
-                   auth_method: Application.get_env(:memcache_client, :auth_method, :none),
-                   username: Application.get_env(:memcache_client, :username, ""),
-                   password: Application.get_env(:memcache_client, :password, "")]
+                                                   :pool_max_overflow, @default_pool_max_overflow)]
+    worker_args = [host: Application.get_env(:memcache_client, :host, @default_host),
+                   port: Application.get_env(:memcache_client, :port, @default_port),
+                   auth_method: Application.get_env(:memcache_client, :auth_method, @default_auth_method),
+                   username: Application.get_env(:memcache_client, :username, @default_username),
+                   password: Application.get_env(:memcache_client, :password, @default_password),
+                   opts: Application.get_env(:memcache_client, :socket_opts, @default_socket_opts),
+                   timeout: Application.get_env(:memcache_client, :timeout, @default_timeout)]
     
     poolboy_sup = :poolboy.child_spec(Memcache.Client.Pool.Supervisor,
                                       pool_args, worker_args)
@@ -208,6 +220,8 @@ defmodule Memcache.Client do
               else
                 {[response], acc}
               end
+            {:response, {:error, reason}} ->
+              {[%Response{status: reason, value: "#{reason}"}], {worker, :halt}}
           end
         {_worker, :halt} = acc ->
           {:halt, acc}
@@ -224,17 +238,11 @@ defmodule Memcache.Client do
   end
   
   defp do_multi_request([request], worker) do
-    GenServer.cast(worker, {:request, self,
-                            %Header{opcode: request.opcode, cas: request.cas},
-                            request.key, request.value, request.extras})
+    Worker.cast(worker, self, request, request.opcode)
   end
   
   defp do_multi_request([request | requests], worker) do
-    GenServer.cast(worker,
-                   {:request,
-                    self,
-                    %Header{opcode: Opcode.to_quiet(request.opcode), cas: request.cas},
-                    request.key, request.value, request.extras})
+    Worker.cast(worker, self, request, Opcode.to_quiet(request.opcode))
     do_multi_request(requests, worker)
   end
 
