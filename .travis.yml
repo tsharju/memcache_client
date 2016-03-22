@@ -2,10 +2,9 @@ language: elixir
 notifications:
   recipients:
     - teemu.harju@gmail.com
-elixir:
-  - 1.2.3
+
 otp_release:
-  - 18.0
+  - 17.0
 before_install:
   - echo "yes" | sudo add-apt-repository ppa:travis-ci/memcached-sasl
   - sudo apt-get update

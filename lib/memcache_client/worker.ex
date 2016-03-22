@@ -112,11 +112,20 @@ defmodule Memcache.Client.Worker do
   defp do_sasl_auth(_, _, _, _, _), do: {:error, :unknown_sasl_auth_mechanism}
 
   defp do_receive(socket, nil, timeout) do
-    with {:ok, header} <- receive_header(socket, timeout),
-         {:ok, total_body} <- receive_body(socket, header.total_body_length, timeout),
-         {:ok, key, body, extras} = Serialization.decode_response_body(header, total_body),
-      do: {:ok, header, key, body, extras}
+    case receive_header(socket, timeout) do
+      {:ok, header} ->
+          case receive_body(socket, header.total_body_length, timeout) do
+            {:ok, total_body} ->
+               case Serialization.decode_response_body(header, total_body) do
+                 {:ok, key, body, extras} ->
+                   {:ok, header, key, body, extras}
+                 error -> error
+               end
+            error -> error
+          end
+      error -> error
     end
+  end
   defp do_receive(socket, reply_to, timeout) do
     case do_receive(socket, nil, timeout) do
       {:ok, header, _key, _body, _extras} = response ->
@@ -128,9 +137,12 @@ defmodule Memcache.Client.Worker do
   end
 
   defp receive_header(socket, timeout) do
-    with {:ok, bytes} <- :gen_tcp.recv(socket, Header.length, timeout),
-         {:ok, header} <- Serialization.decode_response_header(bytes),
-         do: {:ok, header}
+    case :gen_tcp.recv(socket, Header.length, timeout) do
+      {:ok, bytes} ->
+        Serialization.decode_response_header(bytes)
+      error ->
+        error
+    end
   end
 
   defp receive_body(_socket, 0, _timeout), do: {:ok, ""}
