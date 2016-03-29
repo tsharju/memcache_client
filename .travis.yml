@@ -2,6 +2,7 @@ language: elixir
 notifications:
   recipients:
     - teemu.harju@gmail.com
+
 otp_release:
   - 17.0
 before_install:
