@@ -78,7 +78,7 @@ defmodule Memcache.Client do
   """
   @spec mget(Enumerable.t) :: Stream.t
   def mget(keys) do
-    requests = Enum.map(keys, &(%Request{opcode: :get, key: &1}))
+    requests = Enum.map(keys, &(%Request{opcode: :getk, key: &1}))
     multi_request(requests)
   end
 
