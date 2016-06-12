@@ -27,6 +27,10 @@ defmodule Memcache.Client.Worker do
    Connection.cast(worker, {:request, from, header, request.key, request.value, request.extras})
   end
 
+  def close(worker) do
+   Connection.call(worker, :close)
+  end
+
   def init(args) do
     host = Keyword.get(args, :host)
     if is_binary(host), do: host = String.to_char_list(host)
@@ -63,6 +67,8 @@ defmodule Memcache.Client.Worker do
   def disconnect(info, %{socket: socket} = state) do
     :ok = :gen_tcp.close(socket)
     case info do
+      {:close, from} ->
+        Connection.reply(from, :ok)
       {:error, :closed, from} ->
         Kernel.send(from, {:response, {:error, :closed}})
       {:error, reason} ->
@@ -86,6 +92,10 @@ defmodule Memcache.Client.Worker do
      {:error, reason} ->
        {:disconnect, {:error, reason, from}, state}
     end
+  end
+
+  def handle_call(:close, from, s) do
+    {:disconnect, {:close, from}, s}
   end
 
   # SASL authentication
