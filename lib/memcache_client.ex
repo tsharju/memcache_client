@@ -221,6 +221,9 @@ defmodule Memcache.Client do
                 {[response], acc}
               end
             {:response, {:error, reason}} ->
+              if reason == :timeout do
+                :ok = Worker.close(worker)
+              end
               {[%Response{status: reason, value: "#{reason}"}], {worker, :halt}}
           end
         {_worker, :halt} = acc ->
