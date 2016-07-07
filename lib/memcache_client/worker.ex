@@ -28,18 +28,21 @@ defmodule Memcache.Client.Worker do
   end
 
   def init(args) do
-    host = Keyword.get(args, :host)
-    if is_binary(host), do: host = String.to_char_list(host)
+    host = case Keyword.get(args, :host) do
+      host_arg when is_binary(host_arg) -> String.to_char_list(host_arg)
+      host_arg -> host_arg
+    end
 
-    state =
-      %State{host: host,
-        port: Keyword.get(args, :port),
-        opts: Keyword.get(args, :opts),
-        timeout: Keyword.get(args, :timeout),
-        auth_method: Keyword.get(args, :auth_method),
-        username: Keyword.get(args, :username),
-        password: Keyword.get(args, :password)
-      }
+    state = %State{
+      host: host,
+      port: Keyword.get(args, :port),
+      opts: Keyword.get(args, :opts),
+      timeout: Keyword.get(args, :timeout),
+      auth_method: Keyword.get(args, :auth_method),
+      username: Keyword.get(args, :username),
+      password: Keyword.get(args, :password)
+    }
+
     {:connect, :init, state}
   end
 

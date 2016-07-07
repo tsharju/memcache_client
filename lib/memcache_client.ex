@@ -3,7 +3,7 @@ defmodule Memcache.Client do
   @moduledoc"""
   Binary protocol client for Memcached server.
   """
-  
+
   use Application
 
   alias Memcache.Client.Serialization.Opcode
@@ -22,22 +22,22 @@ defmodule Memcache.Client do
   @type key :: binary
   @type value :: any
   @type opts :: Keyword.t
-  
+
   defmodule Response do
     defstruct key: "", value: "", extras: "", status: nil, cas: 0, data_type: nil
     @type t :: %Response{key: binary, value: any, extras: binary, status: atom,
                          cas: non_neg_integer, data_type: non_neg_integer}
   end
-  
+
   defmodule Request do
     defstruct opcode: nil, key: "", value: "", extras: "", cas: 0
     @type t :: %Request{opcode: atom, key: binary, value: any,
                         extras: binary, cas: non_neg_integer}
   end
-  
+
   def start(_type, _args) do
     import Supervisor.Spec, warn: false
-    
+
     pool_args = [name: {:local, Memcache.Client.Pool},
                  worker_module: Memcache.Client.Worker,
                  size: Application.get_env(:memcache_client, :pool_size, @default_pool_size),
@@ -50,14 +50,14 @@ defmodule Memcache.Client do
                    password: Application.get_env(:memcache_client, :password, @default_password),
                    opts: Application.get_env(:memcache_client, :socket_opts, @default_socket_opts),
                    timeout: Application.get_env(:memcache_client, :timeout, @default_timeout)]
-    
+
     poolboy_sup = :poolboy.child_spec(Memcache.Client.Pool.Supervisor,
                                       pool_args, worker_args)
-    
+
     children = [
       poolboy_sup
     ]
-    
+
     opts = [strategy: :one_for_one, name: Memcache.Client.Supervisor]
     Supervisor.start_link(children, opts)
   end
@@ -69,7 +69,7 @@ defmodule Memcache.Client do
   def get(key) do
     request = %Request{opcode: :get, key: key}
     [response] = multi_request([request], false)
-    
+
     response
   end
 
@@ -101,7 +101,7 @@ defmodule Memcache.Client do
       end)
     multi_request(requests)
   end
-  
+
   @doc """
   Sets `value` for given `key` only if it does not already exist.
   """
@@ -121,7 +121,7 @@ defmodule Memcache.Client do
   def append(key, value) do
     request = %Request{opcode: :append, key: key, value: value}
     [response] = multi_request([request], false)
-    
+
     response
   end
 
@@ -135,7 +135,7 @@ defmodule Memcache.Client do
 
     response
   end
-  
+
   @doc """
   Deletes the `value` for the given `key`.
   """
@@ -170,7 +170,7 @@ defmodule Memcache.Client do
 
     request = %Request{opcode: :flush, extras: extras}
     [response] = multi_request([request], false)
-    
+
     response
   end
 
@@ -181,12 +181,12 @@ defmodule Memcache.Client do
   def version() do
     request = %Request{opcode: :version}
     [response] = multi_request([request], false)
-    
+
     response
   end
 
   ## private api
-  
+
   defp multi_request(requests, return_stream \\ true) do
     stream = Stream.resource(
       fn ->
@@ -199,27 +199,24 @@ defmodule Memcache.Client do
           # stream responses
           receive do
             {:response, {:ok, header, key, value, extras}} ->
-              response = %Response{status: header.status, cas: header.cas,
-                                   key: key, value: value, extras: extras}
-
               # apply transcoder for get operations
               if extras != "" and Opcode.get?(header.opcode) do
                 <<type_flag :: size(32)>> = extras
-                case Memcache.Client.Transcoder.decode_value(response.value, type_flag) do
+                case Memcache.Client.Transcoder.decode_value(value, type_flag) do
                   {:error, _error} ->
-                    response = %{response | status: :transcode_error,
-                                 value: "Transcode error"}
+                    %Response{status: :transcode_error, cas: header.cas, key: key, value: "Transcode error", extras: extras}
                   value ->
-                    response = %{response | value: value, data_type: type_flag}
+                    %Response{status: header.status, cas: header.cas, key: key, value: value, extras: extras, data_type: type_flag}
                 end
               end
-              
-              if not Opcode.quiet?(header.opcode) do
+
+              unless Opcode.quiet?(header.opcode) do
                 # we'll halt since there won't be anymore results
-                {[response], {worker, :halt}}
+                {[%Response{status: header.status, cas: header.cas, key: key, value: value, extras: extras}], {worker, :halt}}
               else
-                {[response], acc}
+                {[%Response{status: header.status, cas: header.cas, key: key, value: value, extras: extras}], acc}
               end
+
             {:response, {:error, reason}} ->
               {[%Response{status: reason, value: "#{reason}"}], {worker, :halt}}
           end
@@ -229,18 +226,18 @@ defmodule Memcache.Client do
       fn {worker, _} ->
         :poolboy.checkin(Memcache.Client.Pool, worker)
       end)
-    
+
     if return_stream do
       stream
     else
       stream |> Enum.into([])
     end
   end
-  
+
   defp do_multi_request([request], worker) do
     Worker.cast(worker, self, request, request.opcode)
   end
-  
+
   defp do_multi_request([request | requests], worker) do
     Worker.cast(worker, self, request, Opcode.to_quiet(request.opcode))
     do_multi_request(requests, worker)
@@ -249,7 +246,7 @@ defmodule Memcache.Client do
   defp do_store(opcode, key, value, opts) do
     request = store_request(opcode, key, value, opts)
     [response] = multi_request([request], false)
-        
+
     response
   end
 
@@ -266,12 +263,12 @@ defmodule Memcache.Client do
   defp do_incr_decr(opcode, key, amount, opts) do
     initial_value = Keyword.get(opts, :initial_value, 0)
     expires       = Keyword.get(opts, :expires, 0)
-    
+
     extras = <<amount :: size(64), initial_value :: size(64), expires :: size(32)>>
 
     request = %Request{opcode: opcode, key: key, extras: extras}
     [response] = multi_request([request], false)
-    
+
     if response.status == :ok do
       <<value :: unsigned-integer-size(64)>> = response.value
       %{response | value: value}

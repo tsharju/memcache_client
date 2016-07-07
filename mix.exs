@@ -21,7 +21,7 @@ defmodule Memcache.Client.Mixfile do
     [
       {:earmark, "~> 0.2.0", only: :dev},
       {:ex_doc, "~> 0.11.4", only: :dev},
-      {:poison, "~> 2.1.0"},
+      {:poison, "~> 2.2.0"},
       {:poolboy, "~> 1.5.1"},
       {:connection, "~> 1.0.2"}
     ]
@@ -40,5 +40,5 @@ defmodule Memcache.Client.Mixfile do
       links: %{"GitHub" => "https://github.com/tsharju/memcache_client"}
     ]
   end
-  
+
 end
