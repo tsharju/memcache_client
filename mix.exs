@@ -3,7 +3,7 @@ defmodule Memcache.Client.Mixfile do
 
   def project do
     [app: :memcache_client,
-     version: "1.1.0",
+     version: "1.1.1",
      elixir: "~> 1.0",
      description: description,
      package: package,
