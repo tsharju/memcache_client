@@ -5,11 +5,12 @@ defmodule Memcache.Client.Worker do
   alias Memcache.Client.Serialization.Opcode
   alias Memcache.Client.Serialization.Header
   alias Memcache.Client.Serialization
+  alias Memcache.Client.ConfigParser
 
   @backoff_time 1000
 
   defmodule State do
-    defstruct host: "127.0.0.1",
+    defstruct host: '127.0.0.1',
       port: 11211,
       opts: [],
       timeout: 5000,
@@ -32,16 +33,11 @@ defmodule Memcache.Client.Worker do
   end
 
   def init(args) do
-    host = case Keyword.get(args, :host) do
-      host_arg when is_binary(host_arg) -> String.to_char_list(host_arg)
-      host_arg -> host_arg
-    end
-
     state = %State{
-      host: host,
-      port: Keyword.get(args, :port),
+      host: args |> Keyword.get(:host) |> ConfigParser.to_binary,
+      port: args |> Keyword.get(:port) |> ConfigParser.to_integer,
       opts: Keyword.get(args, :opts),
-      timeout: Keyword.get(args, :timeout),
+      timeout: args |> Keyword.get(:timeout) |> ConfigParser.to_integer,
       auth_method: Keyword.get(args, :auth_method),
       username: Keyword.get(args, :username),
       password: Keyword.get(args, :password)
