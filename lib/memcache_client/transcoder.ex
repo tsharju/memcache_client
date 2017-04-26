@@ -1,9 +1,7 @@
 defmodule Memcache.Client.Transcoder do
 
-  use Behaviour
-  
-  defcallback encode_value(value :: any) :: {binary, binary}
-  defcallback decode_value(value :: binary, data_type :: binary) :: any
+  @callback encode_value(value :: any) :: {binary, binary}
+  @callback decode_value(value :: binary, data_type :: binary) :: any
 
   def encode_value(value) do
     transcoder = Application.get_env(:memcache_client, :transcoder, Memcache.Client.Transcoder.Raw)
@@ -14,7 +12,7 @@ defmodule Memcache.Client.Transcoder do
     transcoder = Application.get_env(:memcache_client, :transcoder, Memcache.Client.Transcoder.Raw)
     transcoder.decode_value(value, data_type)
   end
-  
+
 end
 
 defmodule Memcache.Client.Transcoder.Erlang do
