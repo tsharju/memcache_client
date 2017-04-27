@@ -238,11 +238,11 @@ defmodule Memcache.Client do
   end
 
   defp do_multi_request([request], worker) do
-    Worker.cast(worker, self, request, request.opcode)
+    Worker.cast(worker, self(), request, request.opcode)
   end
 
   defp do_multi_request([request | requests], worker) do
-    Worker.cast(worker, self, request, Opcode.to_quiet(request.opcode))
+    Worker.cast(worker, self(), request, Opcode.to_quiet(request.opcode))
     do_multi_request(requests, worker)
   end
 
