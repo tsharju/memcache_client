@@ -5,11 +5,11 @@ defmodule Memcache.Client.Mixfile do
     [app: :memcache_client,
      version: "1.1.1",
      elixir: "~> 1.0",
-     description: description,
-     package: package,
+     description: description(),
+     package: package(),
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
-     deps: deps]
+     deps: deps()]
   end
 
   def application do
@@ -19,11 +19,11 @@ defmodule Memcache.Client.Mixfile do
 
   defp deps do
     [
-      {:earmark, "~> 0.2.0", only: :dev},
-      {:ex_doc, "~> 0.11.4", only: :dev},
+      {:earmark, "~> 1.2.0", only: :dev},
+      {:ex_doc, "~> 0.14", only: :dev},
       {:poison, "~> 3.1"},
       {:poolboy, "~> 1.5.1"},
-      {:connection, "~> 1.0.2"}
+      {:connection, "~> 1.0.4"}
     ]
   end
 
