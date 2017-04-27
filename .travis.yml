@@ -4,7 +4,7 @@ notifications:
     - teemu.harju@gmail.com
 
 otp_release:
-  - 17.0
+  - 19.0
 before_install:
   - echo "yes" | sudo add-apt-repository ppa:travis-ci/memcached-sasl
   - sudo apt-get update
