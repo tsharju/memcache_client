@@ -210,11 +210,11 @@ defmodule Memcache.Client do
                 end
               end
 
-              unless Opcode.quiet?(header.opcode) do
+              if Opcode.quiet?(header.opcode) do
                 # we'll halt since there won't be anymore results
-                {[%Response{status: header.status, cas: header.cas, key: key, value: value, extras: extras}], {worker, :halt}}
-              else
                 {[%Response{status: header.status, cas: header.cas, key: key, value: value, extras: extras}], acc}
+              else
+                {[%Response{status: header.status, cas: header.cas, key: key, value: value, extras: extras}], {worker, :halt}}
               end
 
             {:response, {:error, reason}} ->
